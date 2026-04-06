@@ -18,8 +18,8 @@ importers:
         specifier: ^1.8.0
         version: 1.8.0
       '@ubay182/sveltekit-hpke-wrapper':
-        specifier: ^1.0.2
-        version: 1.0.2(svelte@5.55.1)
+        specifier: ^1.0.4
+        version: 1.0.4(svelte@5.55.1)
     devDependencies:
       '@eslint/compat':
         specifier: ^2.0.3
@@ -615,8 +615,8 @@ packages:
     resolution: {integrity: sha512-XJ9UD9+bbDo4a4epraTwG3TsNPeiB9aShrUneAVXy8q4LuwowN+qu89/6ByLMINqvIMeI9H9hOHQtg/ijrYXzQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@ubay182/sveltekit-hpke-wrapper@1.0.2':
-    resolution: {integrity: sha512-uN3V0WPvBGJuYKkRC3FZDoPVZqwA1tgSer4HZpFjF6tFqFAS6+beitHs5SwuWxl7tTv4TYm7UDauvMVhbIg0xw==}
+  '@ubay182/sveltekit-hpke-wrapper@1.0.4':
+    resolution: {integrity: sha512-B3zBExYKN/MlPbE7nsPhH+/TORqsdTv8yV/s7hg/qQZ1SzUPo3G/lM4exruueBadT24cIhfFL/GBWcMlTFQJCA==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0
@@ -1602,7 +1602,7 @@ snapshots:
       '@typescript-eslint/types': 8.58.0
       eslint-visitor-keys: 5.0.1
 
-  '@ubay182/sveltekit-hpke-wrapper@1.0.2(svelte@5.55.1)':
+  '@ubay182/sveltekit-hpke-wrapper@1.0.4(svelte@5.55.1)':
     dependencies:
       '@hpke/chacha20poly1305': 1.8.0
       '@hpke/core': 1.9.0

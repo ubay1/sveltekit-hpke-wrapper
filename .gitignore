@@ -22,3 +22,6 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# HPKE Server Keys (auto-generated, do not commit)
+.hpke-server-keys.json

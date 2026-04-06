@@ -10,6 +10,11 @@ HPKE (Hybrid Public Key Encryption) wrapper for SvelteKit applications with end-
 - ✅ **TypeScript Support** — Full type definitions
 - ✅ **X25519 Key Exchange** — Elliptic curve Diffie-Hellman
 - ✅ **AES-128-GCM & ChaCha20-Poly1305** — Authenticated encryption
+- ✅ **Key Persistence** — Keys survive server restart (saved to file)
+- ✅ **Key Rotation** — Auto-rotate keys with grace period for in-flight messages
+- ✅ **Cookie Delivery** — Server public key delivered via cookie, no extra API call
+- ✅ **API Key Auth** — Built-in authentication middleware
+- ✅ **Rate Limiting** — Per-IP request limiting to prevent abuse
 
 ## 📦 Installation
 
@@ -21,102 +26,51 @@ pnpm add @ubay182/sveltekit-hpke-wrapper
 
 ## 🎯 Quick Start
 
-### 1. Client-Side (Svelte Component)
+### 1. Server Setup (Auto-Generate Keys + Cookie)
 
-```svelte
-<script lang="ts">
-	import {
-		generateKeyPair,
-		hpkeEncrypt,
-		hpkeDecrypt,
-		uint8ArrayToBase64,
-		base64ToUint8Array,
-		createHpkeSuite
-	} from '@ubay182/sveltekit-hpke-wrapper';
-
-	let serverPubKey = $state<any>(null);
-	let clientPrivKey = $state<any>(null);
-	let clientPubKeyB64 = $state('');
-	let decryptedText = $state('');
-
-	// Step 1: Fetch server public key
-	async function getServerKey() {
-		const res = await fetch('/api/hpke-keys');
-		const data = await res.json();
-
-		const keyBytes = base64ToUint8Array(data.publicKey);
-		const suite = createHpkeSuite();
-		serverPubKey = await suite.kem.importKey('raw', keyBytes.buffer as ArrayBuffer, true);
-	}
-
-	// Step 2: Generate client key pair
-	async function generateClientKeys() {
-		const keys = await generateKeyPair();
-		clientPrivKey = keys.privateKey;
-		clientPubKeyB64 = uint8ArrayToBase64(keys.publicKeyRaw);
-	}
-
-	// Step 3: Encrypt & send
-	async function encryptAndSend(payload: any) {
-		const message = JSON.stringify(payload);
-		const result = await hpkeEncrypt(message, serverPubKey);
-
-		const ciphertext = uint8ArrayToBase64(new Uint8Array(result.ciphertext));
-		const enc = uint8ArrayToBase64(new Uint8Array(result.enc));
-
-		const res = await fetch('/api/hpke-proxy', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ ciphertext, enc, clientPublicKey: clientPubKeyB64 })
-		});
-
-		const data = await res.json();
-		return data; // { ciphertext, enc }
-	}
-
-	// Step 4: Decrypt server response
-	async function decryptResponse(encryptedData: { ciphertext: string; enc: string }) {
-		const ct = base64ToUint8Array(encryptedData.ciphertext);
-		const enc = base64ToUint8Array(encryptedData.enc);
-
-		decryptedText = await hpkeDecrypt(
-			ct.buffer as ArrayBuffer,
-			enc.buffer as ArrayBuffer,
-			clientPrivKey
-		);
-	}
-</script>
-```
-
-### 2. Server-Side (SvelteKit Routes)
-
-Create a shared HPKE server instance so all routes use the same key pair:
+Keys are generated at server startup and the public key is sent as a cookie — no separate API call needed.
 
 ```typescript
 // src/lib/hpke-server-instance.ts
 import { createHpkeServer, type HpkeServerInstance } from '@ubay182/sveltekit-hpke-wrapper';
 
-export const hpkeServer: HpkeServerInstance = createHpkeServer({ autoGenerateKeys: false });
+// Auto-generate keys, persist to file, rotate every 24h
+export const hpkeServer: HpkeServerInstance = createHpkeServer({
+	autoGenerateKeys: true,
+	persistKeys: true, // Save keys to .hpke-server-keys.json
+	rotateKeys: true, // Auto-rotate every 24h
+	rotationIntervalMs: 24 * 60 * 60 * 1000
+});
 ```
 
 ```typescript
-// src/routes/api/hpke-keys/+server.ts
+// src/hooks.server.ts
 import { hpkeServer } from '$lib/hpke-server-instance';
+import type { Handle } from '@sveltejs/kit';
 
-export async function GET() {
-	const publicKey = await hpkeServer.init();
+export const handle: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
 
-	return new Response(
-		JSON.stringify({
-			publicKey,
-			algorithm: 'X25519-HKDF-SHA256',
-			aead: 'AES-128-GCM'
-		}),
-		{
-			headers: { 'Content-Type': 'application/json' }
-		}
-	);
-}
+	try {
+		const publicKey = hpkeServer.getPublicKeyBase64();
+		const headers = new Headers(response.headers);
+
+		headers.append(
+			'Set-Cookie',
+			`hpke_server_public_key=${encodeURIComponent(publicKey)}; Path=/; SameSite=Lax`
+		);
+
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers
+		});
+	} catch {
+		// Keys not ready yet — skip cookie
+	}
+
+	return response;
+};
 ```
 
 ```typescript
@@ -139,6 +93,82 @@ export async function POST({ request }: { request: Request }) {
 		headers: { 'Content-Type': 'application/json' }
 	});
 }
+```
+
+### 2. Client-Side (Svelte Component)
+
+Keys are auto-setup on page load — server key from cookie, client key generated. No extra API call needed.
+
+```svelte
+<script lang="ts">
+	import {
+		generateKeyPair,
+		hpkeEncrypt,
+		hpkeDecrypt,
+		uint8ArrayToBase64,
+		base64ToUint8Array,
+		createHpkeSuite
+	} from '@ubay182/sveltekit-hpke-wrapper';
+
+	let serverPubKey = $state<any>(null);
+	let clientPrivKey = $state<any>(null);
+	let clientPubKeyB64 = $state('');
+
+	// Auto-setup on mount
+	async function initKeys() {
+		// Read server public key from cookie
+		const cookie = document.cookie
+			.split('; ')
+			.find((row) => row.startsWith('hpke_server_public_key='));
+
+		const publicKeyB64 = decodeURIComponent(cookie.split('=')[1]);
+		const keyBytes = base64ToUint8Array(publicKeyB64);
+		const suite = createHpkeSuite();
+		serverPubKey = await suite.kem.importKey('raw', keyBytes.buffer as ArrayBuffer, true);
+
+		// Generate client key pair
+		const keys = await generateKeyPair();
+		clientPrivKey = keys.privateKey;
+		clientPubKeyB64 = uint8ArrayToBase64(keys.publicKeyRaw);
+	}
+
+	initKeys();
+
+	// Encrypt & send
+	async function encryptAndSend(payload: any) {
+		const result = await hpkeEncrypt(JSON.stringify(payload), serverPubKey);
+
+		const ciphertext = uint8ArrayToBase64(new Uint8Array(result.ciphertext));
+		const enc = uint8ArrayToBase64(new Uint8Array(result.enc));
+
+		// Combine into single encrypted string
+		const encrypted = btoa(
+			JSON.stringify({
+				ciphertext,
+				enc,
+				clientPublicKey: clientPubKeyB64
+			})
+		);
+
+		const res = await fetch('/api/hpke-proxy', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ encrypted })
+		});
+
+		const data = await res.json();
+		// Decode response
+		const resPayload = JSON.parse(atob(data.encrypted));
+		return resPayload; // { ciphertext, enc }
+	}
+
+	// Decrypt response
+	async function decryptResponse(data: { ciphertext: string; enc: string }) {
+		const ct = base64ToUint8Array(data.ciphertext);
+		const enc = base64ToUint8Array(data.enc);
+		return await hpkeDecrypt(ct.buffer, enc.buffer, clientPrivKey);
+	}
+</script>
 ```
 
 ## 📚 API Reference
@@ -225,6 +255,10 @@ Create an HPKE server instance with key management.
 ```typescript
 interface HpkeServerConfig {
 	autoGenerateKeys?: boolean; // Default: true
+	persistKeys?: boolean; // Save keys to file (default: false)
+	keysFilePath?: string; // Custom path (default: cwd + '/.hpke-server-keys.json')
+	rotateKeys?: boolean; // Auto-rotate keys (default: false)
+	rotationIntervalMs?: number; // Rotation interval (default: 24h)
 }
 
 interface HpkeServerInstance {
@@ -235,6 +269,10 @@ interface HpkeServerInstance {
 }
 ```
 
+**Key Persistence**: When `persistKeys: true`, keys are saved to `.hpke-server-keys.json` and reloaded on restart.
+
+**Key Rotation**: When `rotateKeys: true`, new keys are generated automatically. The old key is kept as "previous" for a grace period, so in-flight encrypted messages can still be decrypted.
+
 ### SvelteKit Integration
 
 #### `createHpkeEndpoint(config?)`
@@ -244,7 +282,6 @@ Create complete GET/POST handlers for a SvelteKit route.
 ```typescript
 const { GET, POST } = createHpkeEndpoint({
 	onRequest: async (decryptedData, request) => {
-		// Process decrypted request
 		return await fetch('https://api.example.com/data', {
 			method: 'POST',
 			body: JSON.stringify(decryptedData)
@@ -258,16 +295,15 @@ const { GET, POST } = createHpkeEndpoint({
 ```
 Client                          Server
   │                               │
-  ├─── GET /api/hpke-keys ──────>│
+  │  ◄── Page load ──────────────│
+  │     (cookie set auto)        │  Keys generated at startup
   │                               │
-  │<──── Public Key (base64) ────│
-  │                               │
-  ├─── generateKeyPair() ────────│  (client generates its own keys)
+  ├─── Read cookie ──────────────│  (no API call needed)
+  ├─── generateKeyPair() ────────│  (auto on mount)
   │                               │
   ├─── hpkeEncrypt(payload) ────│
   │                               │
-  ├─── POST { ciphertext, enc, ─>│
-  │       clientPublicKey }      │
+  ├─── POST { encrypted: "..." }─>│
   │                               │
   │                               ├─── decrypt() ──┐
   │                               │                 │
@@ -275,21 +311,30 @@ Client                          Server
   │                               │                 │
   │                               │<── encrypt() ───┘
   │                               │
-  │<──── { ciphertext, enc } ────│
+  │<──── { encrypted: "..." } ───│
   │                               │
   └─── hpkeDecrypt(response) ────┘
 ```
 
 ## 🔐 Security Notes
 
-⚠️ **Important**: This is a convenience wrapper library. For production:
+This library includes built-in security features:
 
-1. **Key Storage** — Use HSM, AWS KMS, or Azure Key Vault
+- ✅ **HPKE Encryption** — RFC 9180 compliant (X25519 + AES-128-GCM)
+- ✅ **Key Persistence** — Keys saved to file, survive restarts
+- ✅ **Key Rotation** — Auto-rotate with grace period for in-flight messages
+- ✅ **API Key Auth** — `x-api-key` header validation
+- ✅ **Rate Limiting** — Per-IP request limiting
+- ✅ **Secure Cookies** — `Secure` flag auto-added in production
+
+⚠️ **For production handling sensitive data**, also consider:
+
+1. **Key Storage** — Use HSM, AWS KMS, or Azure Key Vault instead of file storage
 2. **HTTPS** — Always use HTTPS in production
-3. **Authentication** — Implement proper auth mechanisms
-4. **Rate Limiting** — Add rate limiting to prevent abuse
-5. **Key Rotation** — Implement regular key rotation
-6. **Audit** — Have security audits performed
+3. **Distributed Rate Limiting** — Use Redis for multi-instance deployments
+4. **Audit Logging** — Log all requests for compliance
+5. **Request Size Limits** — Validate payload sizes
+6. **Security Audit** — Have security audits performed
 
 ## 🧪 Development
 

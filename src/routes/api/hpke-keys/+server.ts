@@ -2,12 +2,7 @@ import { hpkeServer } from '$lib/hpke-server-instance.js';
 
 export async function GET() {
 	try {
-		console.log('🔑 Generating server HPKE keys...');
-
-		const publicKeyBase64 = await hpkeServer.init();
-
-		console.log('✓ Server HPKE keys generated');
-		console.log('  Public key:', publicKeyBase64.substring(0, 50) + '...');
+		const publicKeyBase64 = hpkeServer.getPublicKeyBase64();
 
 		return new Response(
 			JSON.stringify({
@@ -16,19 +11,15 @@ export async function GET() {
 				aead: 'AES-128-GCM'
 			}),
 			{
-				headers: {
-					'Content-Type': 'application/json'
-				}
+				headers: { 'Content-Type': 'application/json' }
 			}
 		);
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 
-		console.error('❌ Failed to generate server HPKE keys:', errorMessage);
-
 		return new Response(
 			JSON.stringify({
-				error: 'Failed to generate keys',
+				error: 'Server keys not ready',
 				details: errorMessage
 			}),
 			{

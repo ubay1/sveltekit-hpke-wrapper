@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import {
 		generateKeyPair,
 		hpkeEncrypt,
@@ -8,13 +9,13 @@
 		createHpkeSuite
 	} from '@ubay182/sveltekit-hpke-wrapper';
 
-	// Flow state: 0=idle, 1=keys ready, 2=encrypted, 3=server responded, 4=decrypted
+	// Flow state: 0=ready, 1=encrypted, 2=server responded, 3=decrypted
 	let step = $state(0);
 	let loading = $state(false);
 	let error = $state('');
 	let logs = $state<string[]>([]);
 
-	// Keys
+	// Keys (auto-setup on mount)
 	let clientPubKeyB64 = $state('');
 	let serverPubKeyB64 = $state('');
 	let clientPrivKey = $state<any>(null);
@@ -39,64 +40,56 @@
 		loading = false;
 		error = '';
 		logs = [];
-		clientPubKeyB64 = '';
-		serverPubKeyB64 = '';
-		clientPrivKey = null;
-		serverPubKey = null;
 		encryptedB64 = { ciphertext: '', enc: '' };
 		serverEncryptedB64 = { ciphertext: '', enc: '' };
 		decryptedText = '';
 	}
 
-	async function step1_getServerKey() {
+	// Auto-setup keys on mount
+	async function initKeys() {
 		loading = true;
 		error = '';
 		try {
-			log('Fetching server public key...');
-			const res = await fetch('/api/hpke-keys');
-			const data = await res.json();
-			if (!data.publicKey) throw new Error('No public key from server');
+			// Read server public key from cookie
+			const cookie = document.cookie
+				.split('; ')
+				.find((row) => row.startsWith('hpke_server_public_key='));
 
-			serverPubKeyB64 = data.publicKey;
-			const keyBytes = base64ToUint8Array(data.publicKey);
+			if (!cookie) throw new Error('No server public key in cookie. Refresh the page.');
+
+			const publicKeyB64 = decodeURIComponent(cookie.split('=')[1]);
+			serverPubKeyB64 = publicKeyB64;
+
+			const keyBytes = base64ToUint8Array(publicKeyB64);
 			const suite = createHpkeSuite();
 			serverPubKey = await suite.kem.importKey('raw', keyBytes.buffer as ArrayBuffer, true);
 
-			step = 1;
-			log('✓ Server public key received & imported');
-		} catch (e: any) {
-			error = e.message;
-			log('✗ Failed: ' + e.message);
-		} finally {
-			loading = false;
-		}
-	}
-
-	async function step2_generateClientKeys() {
-		loading = true;
-		error = '';
-		try {
-			log('Generating client key pair...');
+			// Generate client key pair
 			const keys = await generateKeyPair();
 			clientPrivKey = keys.privateKey;
 			clientPubKeyB64 = uint8ArrayToBase64(keys.publicKeyRaw);
 
-			step = Math.max(step, 1);
-			log('✓ Client key pair generated');
+			log('✓ Keys ready — server key from cookie, client key generated');
 		} catch (e: any) {
 			error = e.message;
-			log('✗ Failed: ' + e.message);
+			log('✗ Key setup failed: ' + e.message);
 		} finally {
 			loading = false;
 		}
 	}
 
-	async function step3_encryptAndSend() {
+	// Run on mount (browser only)
+	onMount(() => {
+		initKeys();
+	});
+
+	async function encryptAndSend() {
+		if (loading) return;
 		loading = true;
 		error = '';
 		try {
 			if (!serverPubKey || !clientPrivKey) {
-				error = 'Missing keys — complete steps 1 & 2 first';
+				error = 'Keys not ready yet — wait a moment and try again';
 				return;
 			}
 
@@ -104,21 +97,23 @@
 			log('Encrypting payload...');
 			const result = await hpkeEncrypt(message, serverPubKey);
 
-			encryptedB64 = {
-				ciphertext: uint8ArrayToBase64(new Uint8Array(result.ciphertext)),
-				enc: uint8ArrayToBase64(new Uint8Array(result.enc))
-			};
+			const ciphertext = uint8ArrayToBase64(new Uint8Array(result.ciphertext));
+			const enc = uint8ArrayToBase64(new Uint8Array(result.enc));
+
+			// Combine into single encrypted string: base64(JSON.stringify(...))
+			const encrypted = btoa(JSON.stringify({ ciphertext, enc, clientPublicKey: clientPubKeyB64 }));
+
+			encryptedB64 = { ciphertext, enc };
 			log('✓ Payload encrypted');
 
 			log('Sending encrypted request to server...');
 			const res = await fetch('/api/hpke-proxy', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					ciphertext: encryptedB64.ciphertext,
-					enc: encryptedB64.enc,
-					clientPublicKey: clientPubKeyB64
-				})
+				headers: {
+					'Content-Type': 'application/json',
+					'x-api-key': 'demo-key-change-me'
+				},
+				body: JSON.stringify({ encrypted })
 			});
 
 			if (!res.ok) {
@@ -127,8 +122,10 @@
 			}
 
 			const data = await res.json();
-			serverEncryptedB64 = { ciphertext: data.ciphertext, enc: data.enc };
-			step = 3;
+			// Decode response: base64 → JSON → { ciphertext, enc }
+			const resPayload = JSON.parse(atob(data.encrypted));
+			serverEncryptedB64 = { ciphertext: resPayload.ciphertext, enc: resPayload.enc };
+			step = 2;
 			log('✓ Server responded with encrypted data');
 		} catch (e: any) {
 			error = e.message;
@@ -138,7 +135,8 @@
 		}
 	}
 
-	async function step4_decryptResponse() {
+	async function decryptResponse() {
+		if (loading) return;
 		loading = true;
 		error = '';
 		try {
@@ -158,7 +156,7 @@
 			);
 
 			decryptedText = decrypted;
-			step = 4;
+			step = 3;
 			log('✓ Server response decrypted successfully');
 		} catch (e: any) {
 			error = e.message;
@@ -169,13 +167,10 @@
 	}
 
 	async function runAll() {
-		await step1_getServerKey();
+		if (loading) return;
+		await encryptAndSend();
 		if (error) return;
-		await step2_generateClientKeys();
-		if (error) return;
-		await step3_encryptAndSend();
-		if (error) return;
-		await step4_decryptResponse();
+		await decryptResponse();
 	}
 </script>
 
@@ -191,32 +186,32 @@
 
 	<!-- Flow Diagram -->
 	<div class="flow-bar">
-		<div class="flow-node {step >= 1 ? 'active' : ''} {step >= 4 ? 'done' : ''}">
+		<div class="flow-node {step >= 0 ? 'active' : ''}">
 			<span class="emoji">🔑</span>
-			<span class="label">Keys</span>
+			<span class="label">Keys Ready</span>
+		</div>
+		<div class="flow-line {step >= 1 ? 'active' : ''}"></div>
+		<div class="flow-node {step >= 1 ? 'active' : ''}">
+			<span class="emoji">🔒</span>
+			<span class="label">Client Encrypt</span>
+		</div>
+		<div class="flow-line {step >= 2 ? 'active' : ''}"></div>
+		<div class="flow-node {step >= 2 ? 'active' : ''}">
+			<span class="emoji">🔓</span>
+			<span class="label">Server Decrypt</span>
+		</div>
+		<div class="flow-line {step >= 2 ? 'active' : ''}"></div>
+		<div class="flow-node {step >= 2 ? 'active' : ''}">
+			<span class="emoji">🌐</span>
+			<span class="label">API Call</span>
 		</div>
 		<div class="flow-line {step >= 2 ? 'active' : ''}"></div>
 		<div class="flow-node {step >= 2 ? 'active' : ''}">
 			<span class="emoji">🔒</span>
-			<span class="label">Client Encrypt</span>
-		</div>
-		<div class="flow-line {step >= 3 ? 'active' : ''}"></div>
-		<div class="flow-node {step >= 3 ? 'active' : ''}">
-			<span class="emoji">🔓</span>
-			<span class="label">Server Decrypt</span>
-		</div>
-		<div class="flow-line {step >= 3 ? 'active' : ''}"></div>
-		<div class="flow-node {step >= 3 ? 'active' : ''}">
-			<span class="emoji">🌐</span>
-			<span class="label">API Call</span>
-		</div>
-		<div class="flow-line {step >= 3 ? 'active' : ''}"></div>
-		<div class="flow-node {step >= 3 ? 'active' : ''}">
-			<span class="emoji">🔒</span>
 			<span class="label">Server Encrypt</span>
 		</div>
-		<div class="flow-line {step >= 4 ? 'active' : ''}"></div>
-		<div class="flow-node {step >= 4 ? 'active' : ''} {step >= 4 ? 'done' : ''}">
+		<div class="flow-line {step >= 3 ? 'active' : ''}"></div>
+		<div class="flow-node {step >= 3 ? 'active' : ''} {step >= 3 ? 'done' : ''}">
 			<span class="emoji">🔓</span>
 			<span class="label">Client Decrypt</span>
 		</div>
@@ -228,55 +223,38 @@
 
 	<!-- Controls -->
 	<div class="controls">
-		<button class="btn primary" onclick={runAll} disabled={loading}>
-			{loading ? '⏳ Running...' : '▶ Run Full Flow'}
+		<button class="btn primary" onclick={runAll} disabled={loading || step >= 3}>
+			{loading ? '⏳ Processing...' : '▶ Encrypt & Send'}
 		</button>
-		<button class="btn" onclick={step1_getServerKey} disabled={loading || step >= 1}>
-			1️⃣ Get Server Key
+		<button class="btn" onclick={encryptAndSend} disabled={loading || step >= 2}>
+			1️⃣ Encrypt & Send
 		</button>
-		<button class="btn" onclick={step2_generateClientKeys} disabled={loading}>
-			2️⃣ Generate Client Keys
-		</button>
-		<button class="btn" onclick={step3_encryptAndSend} disabled={loading || step >= 3}>
-			3️⃣ Encrypt & Send
-		</button>
-		<button class="btn" onclick={step4_decryptResponse} disabled={loading || step >= 4}>
-			4️⃣ Decrypt Response
+		<button class="btn" onclick={decryptResponse} disabled={loading || step >= 3}>
+			2️⃣ Decrypt Response
 		</button>
 		<button class="btn secondary" onclick={resetAll} disabled={loading}> 🔄 Reset </button>
 	</div>
 
-	<!-- Panels -->
-	<div class="grid">
-		<!-- Left: Request -->
+	<!-- Keys Info -->
+	{#if serverPubKeyB64 && clientPubKeyB64}
 		<div class="panel">
-			<h2>📝 Request Payload</h2>
-			<label for="req-title">Title</label>
-			<input id="req-title" bind:value={requestPayload.title} disabled={step >= 2} />
-			<label for="req-body">Body</label>
-			<textarea id="req-body" bind:value={requestPayload.body} disabled={step >= 2} rows={2}
-			></textarea>
-			<label for="req-userid">User ID</label>
-			<input
-				id="req-userid"
-				type="number"
-				bind:value={requestPayload.userId}
-				disabled={step >= 2}
-			/>
+			<h2>🔑 Keys (Auto-Loaded)</h2>
+			<label for="server-pubkey">Server Public Key (from cookie)</label>
+			<code id="server-pubkey" class="key-box">{serverPubKeyB64}</code>
+			<label for="client-pubkey">Client Public Key</label>
+			<code id="client-pubkey" class="key-box">{clientPubKeyB64}</code>
 		</div>
+	{/if}
 
-		<!-- Right: Keys -->
-		<div class="panel">
-			<h2>🔑 Keys</h2>
-			{#if serverPubKeyB64}
-				<label for="server-pubkey">Server Public Key</label>
-				<code id="server-pubkey" class="key-box">{serverPubKeyB64}</code>
-			{/if}
-			{#if clientPubKeyB64}
-				<label for="client-pubkey">Client Public Key</label>
-				<code id="client-pubkey" class="key-box">{clientPubKeyB64}</code>
-			{/if}
-		</div>
+	<!-- Request Payload -->
+	<div class="panel">
+		<h2>📝 Request Payload</h2>
+		<label for="req-title">Title</label>
+		<input id="req-title" bind:value={requestPayload.title} disabled={loading} />
+		<label for="req-body">Body</label>
+		<textarea id="req-body" bind:value={requestPayload.body} disabled={loading} rows={2}></textarea>
+		<label for="req-userid">User ID</label>
+		<input id="req-userid" type="number" bind:value={requestPayload.userId} disabled={loading} />
 	</div>
 
 	{#if encryptedB64.ciphertext}
@@ -437,20 +415,6 @@
 		border-radius: 8px;
 		margin-bottom: 1rem;
 		border: 1px solid #f5c6cb;
-	}
-
-	/* Grid */
-	.grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	@media (max-width: 700px) {
-		.grid {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	/* Panels */

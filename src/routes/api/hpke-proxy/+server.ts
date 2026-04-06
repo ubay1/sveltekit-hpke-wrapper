@@ -1,19 +1,25 @@
 import { hpkeServer } from '$lib/hpke-server-instance.js';
+import { hpkeAuth } from '$lib/hpke-auth.js';
 
-export async function POST({ request }: { request: Request }) {
+export async function POST({ request, getClientAddress }: { request: Request; getClientAddress: () => string }) {
+	// Auth + rate limit check
+	const authError = hpkeAuth({ request, getClientAddress });
+	if (authError) return authError;
+
 	try {
 		const body = await request.json();
-		const { ciphertext, enc, clientPublicKey } = body;
+		const { encrypted } = body;
 
-		if (!ciphertext || !enc || !clientPublicKey) {
+		if (!encrypted) {
 			return new Response(
-				JSON.stringify({ error: 'Missing required fields' }),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' }
-				}
+				JSON.stringify({ error: 'Missing encrypted field' }),
+				{ status: 400, headers: { 'Content-Type': 'application/json' } }
 			);
 		}
+
+		// Decode: base64 → JSON → { ciphertext, enc, clientPublicKey }
+		const payload = JSON.parse(atob(encrypted));
+		const { ciphertext, enc, clientPublicKey } = payload;
 
 		console.log('📦 Received encrypted request');
 
@@ -39,7 +45,7 @@ export async function POST({ request }: { request: Request }) {
 		const apiData = await apiResponse.json();
 		console.log('✓ API Response received:', apiData.id);
 
-		// Encrypt response
+		// Encrypt response → encode as single base64 string
 		const responseData = JSON.stringify({
 			success: true,
 			data: apiData,
@@ -49,7 +55,9 @@ export async function POST({ request }: { request: Request }) {
 		const encryptedResponse = await hpkeServer.encrypt(responseData, clientPublicKey);
 
 		return new Response(
-			JSON.stringify(encryptedResponse),
+			JSON.stringify({
+				encrypted: btoa(JSON.stringify(encryptedResponse))
+			}),
 			{
 				headers: { 'Content-Type': 'application/json' }
 			}
