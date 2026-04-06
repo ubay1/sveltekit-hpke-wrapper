@@ -1,65 +1,27 @@
-# Svelte library
+# @ubay182/sveltekit-hpke-wrapper
 
-Everything you need to build a Svelte library, powered by [`sv`](https://npmjs.com/package/sv).
+HPKE (Hybrid Public Key Encryption) wrapper for SvelteKit applications with end-to-end encryption support.
 
-Read more about creating a library [in the docs](https://svelte.dev/docs/kit/packaging).
+## 📦 Installation
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
+```bash
+npm i @ubay182/sveltekit-hpke-wrapper
 ```
 
-To recreate this project with the same configuration:
+or
 
-```sh
-# recreate this project
-pnpm dlx sv@0.14.0 create --template library --types ts --add prettier eslint --install pnpm sveltekit-hpke
+```bash
+pnpm add @ubay182/sveltekit-hpke-wrapper
 ```
 
-## Developing
+## 🚀 Quick Start
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+See a complete working example here: [src/routes/+page.svelte](https://github.com/ubay1/sveltekit-hpke-wrapper/blob/main/src/routes/%2Bpage.svelte)
 
-```sh
-npm run dev
+## 📚 Documentation
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+For full API reference, security notes, and development instructions, see [packages/hpke-wrapper/README.md](./packages/hpke-wrapper/README.md).
 
-Everything inside `src/lib` is part of your library, everything inside `src/routes` can be used as a showcase or preview app.
+## 📄 License
 
-## Building
-
-To build your library:
-
-```sh
-npm pack
-```
-
-To create a production version of your showcase app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
-
-## Publishing
-
-Go into the `package.json` and give your package the desired name through the `"name"` option. Also consider adding a `"license"` field and point it to a `LICENSE` file which you can create from a template (one popular option is the [MIT license](https://opensource.org/license/mit/)).
-
-To publish your library to [npm](https://www.npmjs.com):
-
-```sh
-npm publish
-```
+MIT

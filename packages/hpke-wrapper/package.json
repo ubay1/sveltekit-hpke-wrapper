@@ -1,6 +1,6 @@
 {
 	"name": "@ubay182/sveltekit-hpke-wrapper",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "HPKE (Hybrid Public Key Encryption) wrapper for SvelteKit applications with end-to-end encryption support",
 	"type": "module",
 	"main": "./dist/index.js",
