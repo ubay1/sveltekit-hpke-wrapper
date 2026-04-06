@@ -1,0 +1,54 @@
+{
+	"name": "@ubay182/sveltekit-hpke-wrapper",
+	"version": "1.0.2",
+	"description": "HPKE (Hybrid Public Key Encryption) wrapper for SvelteKit applications with end-to-end encryption support",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"lint": "tsc --noEmit",
+		"prepublishOnly": "npm run build"
+	},
+	"keywords": [
+		"hpke",
+		"encryption",
+		"sveltekit",
+		"x25519",
+		"aes-gcm",
+		"end-to-end",
+		"cryptography"
+	],
+	"author": "",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ubay1/sveltekit-hpke-wrapper"
+	},
+	"dependencies": {
+		"@hpke/chacha20poly1305": "^1.8.0",
+		"@hpke/core": "^1.9.0",
+		"@hpke/dhkem-x25519": "^1.8.0"
+	},
+	"devDependencies": {
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	},
+	"peerDependencies": {
+		"svelte": "^4.0.0 || ^5.0.0"
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	}
+}
