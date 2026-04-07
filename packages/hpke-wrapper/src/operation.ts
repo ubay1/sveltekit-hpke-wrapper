@@ -74,8 +74,6 @@ const unwrapBase64 = (str: string) => {
   // Extract padding count (last digit)
   const paddingCount = parseInt(str.substring(strLength - 1), 10)
 
-  console.log('unwrapBase64 - prefix:', prefix, 'suffix:', suffix, 'padding:', paddingCount)
-
   // Validate prefix matches suffix
   if (prefix === suffix) {
     // Extract base64 (between prefix and suffix)
@@ -85,13 +83,9 @@ const unwrapBase64 = (str: string) => {
     const padding = '='.repeat(paddingCount)
     const result = base64WithoutPadding + padding
 
-    console.log('unwrapBase64 - base64 without padding length:', base64WithoutPadding.length)
-    console.log('unwrapBase64 - final base64:', result)
-
     return result
   }
 
-  console.log('unwrapBase64 - prefix/suffix mismatch, returning original')
   return str
 }
 
@@ -121,29 +115,15 @@ export const seal = async (suite: CipherSuite, publicKeyB64: string, plainText: 
 
   const wrappedResult = wrapBase64(base64Result)
 
-  console.log('seal - original base64 length:', base64Result.length)
-  console.log('seal - wrapped result length:', wrappedResult.length)
-  console.log('seal - wrapped result starts with:', wrappedResult.substring(0, 10))
-  console.log('seal - wrapped result ends with:', wrappedResult.substring(wrappedResult.length - 10))
-
   return wrappedResult
 }
 
 export const unseal = async (suite: CipherSuite, privateKey: any, cipher: string) => {
-  console.log('unseal - received cipher length:', cipher.length)
-  console.log('unseal - received cipher:', cipher)
-
   const unwrappedCipher = unwrapBase64(cipher)
-  console.log('unseal - unwrapped length:', unwrappedCipher.length)
-  console.log('unseal - unwrapped value:', unwrappedCipher)
-  console.log('unseal - length % 4:', unwrappedCipher.length % 4)
-  console.log('unseal - is valid base64:', isBase64String(unwrappedCipher))
 
   if (isBase64String(unwrappedCipher)) {
     try {
-      console.log('unseal - attempting base64 decode...')
       const data = base64ToUint8Array(unwrappedCipher)
-      console.log('unseal - decoded bytes:', data.length)
 
       const headerSize = data.at(0) ?? 0
       const cipherSize = parseInt(uint8ArrayToString(data.subarray(1, headerSize + 1)), 10)

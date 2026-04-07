@@ -134,9 +134,8 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 				};
 			}
 			writeFileSync(resolvedPath, JSON.stringify(data, null, 2));
-			console.log('🔑 Server keys saved to', resolvedPath);
 		} catch (err) {
-			console.error('⚠️ Failed to save server keys:', err);
+			console.error('Failed to save server keys:', err);
 		}
 	}
 
@@ -164,10 +163,8 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 					publicKey: suite.kem.importKey('raw', prevPubBytes.buffer as ArrayBuffer, true),
 					privateKey: suite.kem.importKey('raw', prevPrivBytes.buffer as ArrayBuffer, false),
 				};
-				console.log('🔑 Loaded previous key pair (grace period)');
 			}
 
-			console.log('🔑 Loaded existing server keys from', resolvedPath);
 			return true;
 		} catch {
 			return false;
@@ -180,7 +177,6 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 		// Rotate: current → previous
 		if (serverKeyPair) {
 			previousKeyPair = serverKeyPair;
-			console.log('🔄 Server keys rotated — old key kept for grace period');
 		}
 
 		serverKeyPair = {
@@ -220,30 +216,20 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 		 * @returns Decrypted plaintext message
 		 */
 		async decrypt(wrappedCiphertext: string): Promise<string> {
-			console.log('🔓 Server decrypt - START');
-			console.log('🔓 wrappedCiphertext type:', typeof wrappedCiphertext);
-			console.log('🔓 wrappedCiphertext length:', wrappedCiphertext?.length);
-			console.log('🔓 wrappedCiphertext value:', wrappedCiphertext);
-
 			if (!serverKeyPair) {
 				throw new Error('Server keys not initialized. Call init() first.');
 			}
-
-			console.log('📥 Server decrypt - received wrappedCiphertext length:', wrappedCiphertext.length);
 
 			const suite = createSuite();
 
 			// Try current key
 			try {
-				console.log('🔓 Attempting unseal with current key...');
 				return await unseal(suite, serverKeyPair.privateKey, wrappedCiphertext);
 			} catch {
 				// Try previous key (grace period for rotated keys)
 				if (previousKeyPair) {
 					try {
-						const result = await unseal(suite, previousKeyPair.privateKey, wrappedCiphertext);
-						console.log('✓ Decrypted with previous key (post-rotation grace)');
-						return result;
+						return await unseal(suite, previousKeyPair.privateKey, wrappedCiphertext);
 					} catch {
 						// fall through
 					}
@@ -278,10 +264,9 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 	if (rotateKeys) {
 		setInterval(() => {
 			generateNewKeys().catch(err => {
-				console.error('❌ Key rotation failed:', err);
+				console.error('Key rotation failed:', err);
 			});
 		}, rotationIntervalMs);
-		console.log('⏰ Key rotation scheduled every', rotationIntervalMs / (60 * 60 * 1000), 'hours');
 	}
 
 	return instance;
