@@ -1,6 +1,6 @@
 {
 	"name": "@ubay182/sveltekit-hpke-wrapper",
-	"version": "1.0.5",
+	"version": "1.0.8",
 	"description": "HPKE (Hybrid Public Key Encryption) wrapper for SvelteKit applications with end-to-end encryption support",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -39,10 +39,10 @@
 	"dependencies": {
 		"@hpke/chacha20poly1305": "^1.8.0",
 		"@hpke/core": "^1.9.0",
-		"@hpke/dhkem-x25519": "^1.8.0"
+		"@hpke/dhkem-x25519": "^1.8.0",
+		"uint8array-extras": "^1.5.0"
 	},
 	"devDependencies": {
-		"tsx": "^4.21.0",
 		"typescript": "^5.9.3"
 	},
 	"peerDependencies": {

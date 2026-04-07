@@ -8,32 +8,45 @@ export async function POST({ request, getClientAddress }: { request: Request; ge
 
 	try {
 		const body = await request.json();
-		const { encrypted } = body;
+		const { data } = body;
 
-		if (!encrypted) {
+		console.log('📦 Received sealed request');
+		console.log('📊 data length:', data?.length);
+
+		if (!data) {
 			return new Response(
-				JSON.stringify({ error: 'Missing encrypted field' }),
+				JSON.stringify({ error: 'Missing data field' }),
 				{ status: 400, headers: { 'Content-Type': 'application/json' } }
 			);
 		}
 
-		// Decode: base64 → JSON → { ciphertext, enc, clientPublicKey }
-		const payload = JSON.parse(atob(encrypted));
-		const { ciphertext, enc, clientPublicKey } = payload;
-
-		console.log('📦 Received encrypted request');
-
-		// Decrypt client message
-		const decryptedMessage = await hpkeServer.decrypt(ciphertext, enc, clientPublicKey);
+		// Decrypt client message using unseal
+		console.log('🔓 Attempting to decrypt...');
+		const decryptedMessage = await hpkeServer.decrypt(data);
 		console.log('✓ Decrypted client message:', decryptedMessage);
 
-		// Parse the decrypted message
+		// Parse the decrypted message and extract clientPublicKey
 		let requestPayload;
+		let clientPublicKey;
 		try {
-			requestPayload = JSON.parse(decryptedMessage);
+			const parsed = JSON.parse(decryptedMessage);
+			// Extract clientPublicKey from inside the encrypted payload
+			clientPublicKey = parsed._clientPublicKey;
+			// Remove the internal field before processing
+			delete parsed._clientPublicKey;
+			requestPayload = parsed;
 		} catch (e) {
 			requestPayload = { title: decryptedMessage, body: '', userId: 1 };
 		}
+
+		if (!clientPublicKey) {
+			return new Response(
+				JSON.stringify({ error: 'Missing client public key in encrypted payload' }),
+				{ status: 400, headers: { 'Content-Type': 'application/json' } }
+			);
+		}
+
+		console.log('🔑 Client public key extracted from encrypted payload');
 
 		// Call external API
 		const apiResponse = await fetch('https://jsonplaceholder.typicode.com/posts', {
@@ -45,18 +58,18 @@ export async function POST({ request, getClientAddress }: { request: Request; ge
 		const apiData = await apiResponse.json();
 		console.log('✓ API Response received:', apiData.id);
 
-		// Encrypt response → encode as single base64 string
+		// Encrypt response using seal
 		const responseData = JSON.stringify({
 			success: true,
 			data: apiData,
 			serverMessage: 'Data has been encrypted on server'
 		});
 
-		const encryptedResponse = await hpkeServer.encrypt(responseData, clientPublicKey);
+		const wrappedResponse = await hpkeServer.encrypt(responseData, clientPublicKey);
 
 		return new Response(
 			JSON.stringify({
-				encrypted: btoa(JSON.stringify(encryptedResponse))
+				data: wrappedResponse
 			}),
 			{
 				headers: { 'Content-Type': 'application/json' }
@@ -64,6 +77,7 @@ export async function POST({ request, getClientAddress }: { request: Request; ge
 		);
 	} catch (error: unknown) {
 		console.error('❌ Server error:', error);
+		console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
 		const errorMessage = error instanceof Error ? error.message : String(error);
 
 		return new Response(

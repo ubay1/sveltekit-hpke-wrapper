@@ -42,6 +42,12 @@ export {
 	type HpkeResponseContext,
 } from './server.js';
 
+// Seal/Unseal operations
+export {
+	seal,
+	unseal,
+} from './operation.js';
+
 // SvelteKit helpers
 export {
 	createHpkeEndpoint,

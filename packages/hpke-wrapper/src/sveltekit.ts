@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { createHpkeServer, type HpkeServerConfig } from './server.js';
+import { createHpkeServer, type HpkeServerConfig, type HpkeServerInstance } from './server.js';
 
 /**
  * HPKE Endpoint handlers
@@ -7,7 +7,7 @@ import { createHpkeServer, type HpkeServerConfig } from './server.js';
 export interface HpkeEndpointHandlers {
 	/** GET handler - Returns server public key */
 	GET?: RequestHandler;
-	/** POST handler - Process encrypted requests */
+	/** POST handler - Process sealed requests */
 	POST?: RequestHandler;
 }
 
@@ -23,17 +23,18 @@ export interface HpkeEndpointConfig extends HpkeServerConfig {
 
 /**
  * Create SvelteKit API endpoints for HPKE
- * 
+ *
  * Generates both GET and POST handlers for a complete HPKE API.
- * 
+ * Uses seal/unseal for obfuscated encrypted payloads.
+ *
  * @param config - Endpoint configuration
  * @returns Object with GET and POST request handlers
- * 
+ *
  * @example
  * ```typescript
  * // src/routes/api/hpke/+server.ts
- * import { createHpkeEndpoint } from '@hpke/sveltekit-wrapper';
- * 
+ * import { createHpkeEndpoint } from '$lib/sveltekit.js';
+ *
  * const { GET, POST } = createHpkeEndpoint({
  *   onRequest: async (decrypted) => {
  *     // Process decrypted request
@@ -44,17 +45,23 @@ export interface HpkeEndpointConfig extends HpkeServerConfig {
  *     return await response.json();
  *   }
  * });
- * 
+ *
  * export { GET, POST };
+ * ```
+ *
+ * @example Client usage
+ * ```typescript
+ * // Client sends: { data: "<sealed ciphertext with _clientPublicKey inside>" }
+ * // Server responds: { data: "<sealed response>" }
  * ```
  */
 export function createHpkeEndpoint(config: HpkeEndpointConfig = {}): HpkeEndpointHandlers {
-	const server = createHpkeServer(config);
+	const server: HpkeServerInstance = createHpkeServer(config);
 
 	const GET: RequestHandler = async () => {
 		try {
 			const publicKey = server.getPublicKeyBase64();
-			
+
 			return new Response(
 				JSON.stringify({
 					publicKey,
@@ -84,11 +91,11 @@ export function createHpkeEndpoint(config: HpkeEndpointConfig = {}): HpkeEndpoin
 	const POST: RequestHandler = async ({ request }) => {
 		try {
 			const body = await request.json();
-			const { ciphertext, enc, clientPublicKey } = body;
+			const { data } = body;
 
-			if (!ciphertext || !enc || !clientPublicKey) {
+			if (!data) {
 				return new Response(
-					JSON.stringify({ error: 'Missing required fields' }),
+					JSON.stringify({ error: 'Missing data field' }),
 					{
 						status: 400,
 						headers: { 'Content-Type': 'application/json' },
@@ -96,15 +103,29 @@ export function createHpkeEndpoint(config: HpkeEndpointConfig = {}): HpkeEndpoin
 				);
 			}
 
-			// Decrypt client message
-			const decryptedMessage = await server.decrypt(ciphertext, enc, clientPublicKey);
-			
-			// Parse decrypted message
+			// Decrypt client message (automatically unseals)
+			const decryptedMessage = await server.decrypt(data);
+
+			// Parse decrypted message and extract clientPublicKey
 			let decryptedData: any;
+			let clientPublicKey: string | undefined;
 			try {
-				decryptedData = JSON.parse(decryptedMessage);
+				const parsed = JSON.parse(decryptedMessage);
+				clientPublicKey = parsed._clientPublicKey;
+				delete parsed._clientPublicKey;
+				decryptedData = parsed;
 			} catch {
 				decryptedData = { message: decryptedMessage };
+			}
+
+			if (!clientPublicKey) {
+				return new Response(
+					JSON.stringify({ error: 'Missing client public key in encrypted payload' }),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
 			}
 
 			// Process with custom handler or return decrypted data
@@ -119,14 +140,14 @@ export function createHpkeEndpoint(config: HpkeEndpointConfig = {}): HpkeEndpoin
 				};
 			}
 
-			// Encrypt response
-			const encrypted = await server.encrypt(
+			// Encrypt response (automatically seals)
+			const encryptedResponse = await server.encrypt(
 				JSON.stringify(responseData),
 				clientPublicKey
 			);
 
 			return new Response(
-				JSON.stringify(encrypted),
+				JSON.stringify({ data: encryptedResponse }),
 				{
 					headers: { 'Content-Type': 'application/json' },
 				}

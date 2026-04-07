@@ -2,11 +2,11 @@
 	import { onMount } from 'svelte';
 	import {
 		generateKeyPair,
-		hpkeEncrypt,
-		hpkeDecrypt,
 		uint8ArrayToBase64,
 		base64ToUint8Array,
-		createHpkeSuite
+		createHpkeSuite,
+		seal,
+		unseal
 	} from '@ubay182/sveltekit-hpke-wrapper';
 
 	// Flow state: 0=ready, 1=encrypted, 2=server responded, 3=decrypted
@@ -27,8 +27,8 @@
 		body: 'This message is encrypted end-to-end',
 		userId: 42
 	});
-	let encryptedB64 = $state({ ciphertext: '', enc: '' });
-	let serverEncryptedB64 = $state({ ciphertext: '', enc: '' });
+	let wrappedCiphertext = $state('');
+	let serverWrappedCiphertext = $state('');
 	let decryptedText = $state('');
 
 	function log(msg: string) {
@@ -40,8 +40,8 @@
 		loading = false;
 		error = '';
 		logs = [];
-		encryptedB64 = { ciphertext: '', enc: '' };
-		serverEncryptedB64 = { ciphertext: '', enc: '' };
+		wrappedCiphertext = '';
+		serverWrappedCiphertext = '';
 		decryptedText = '';
 	}
 
@@ -94,26 +94,34 @@
 			}
 
 			const message = JSON.stringify(requestPayload);
-			log('Encrypting payload...');
-			const result = await hpkeEncrypt(message, serverPubKey);
+			log('Encrypting payload with seal...');
 
-			const ciphertext = uint8ArrayToBase64(new Uint8Array(result.ciphertext));
-			const enc = uint8ArrayToBase64(new Uint8Array(result.enc));
+			// Use seal to wrap ciphertext + enc into single obfuscated string
+			// Use the base64 string we already have from cookie
+			const suite = createHpkeSuite();
 
-			// Combine into single encrypted string: base64(JSON.stringify(...))
-			const encrypted = btoa(JSON.stringify({ ciphertext, enc, clientPublicKey: clientPubKeyB64 }));
+			wrappedCiphertext = await seal(suite, serverPubKeyB64, message);
 
-			encryptedB64 = { ciphertext, enc };
-			log('✓ Payload encrypted');
+			log('✓ Payload encrypted and wrapped');
 
 			log('Sending encrypted request to server...');
+
+			// Include clientPublicKey inside the encrypted payload (not visible in request body)
+			const payloadWithKey = JSON.stringify({
+				...requestPayload,
+				_clientPublicKey: clientPubKeyB64 // Hidden inside encryption
+			});
+
+			const suite2 = createHpkeSuite();
+			wrappedCiphertext = await seal(suite2, serverPubKeyB64, payloadWithKey);
+
 			const res = await fetch('/api/hpke-proxy', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					'x-api-key': 'demo-key-change-me'
 				},
-				body: JSON.stringify({ encrypted })
+				body: JSON.stringify({ data: wrappedCiphertext })
 			});
 
 			if (!res.ok) {
@@ -121,10 +129,9 @@
 				throw new Error(errData.error || res.statusText);
 			}
 
-			const data = await res.json();
-			// Decode response: base64 → JSON → { ciphertext, enc }
-			const resPayload = JSON.parse(atob(data.encrypted));
-			serverEncryptedB64 = { ciphertext: resPayload.ciphertext, enc: resPayload.enc };
+			const resData = await res.json();
+			// Response now contains data (sealed)
+			serverWrappedCiphertext = resData.data;
 			step = 2;
 			log('✓ Server responded with encrypted data');
 		} catch (e: any) {
@@ -145,15 +152,11 @@
 				return;
 			}
 
-			log('Decrypting server response...');
-			const ct = base64ToUint8Array(serverEncryptedB64.ciphertext);
-			const enc = base64ToUint8Array(serverEncryptedB64.enc);
+			log('Decrypting server response with unseal...');
 
-			const decrypted = await hpkeDecrypt(
-				ct.buffer as ArrayBuffer,
-				enc.buffer as ArrayBuffer,
-				clientPrivKey
-			);
+			// Use private key object directly (no JWK export needed)
+			const suite = createHpkeSuite();
+			const decrypted = await unseal(suite, clientPrivKey, serverWrappedCiphertext);
 
 			decryptedText = decrypted;
 			step = 3;
@@ -257,23 +260,19 @@
 		<input id="req-userid" type="number" bind:value={requestPayload.userId} disabled={loading} />
 	</div>
 
-	{#if encryptedB64.ciphertext}
+	{#if wrappedCiphertext}
 		<div class="panel encrypted">
-			<h2>🔒 Encrypted Request (Client → Server)</h2>
-			<label for="enc-req-ct">Ciphertext (base64)</label>
-			<code id="enc-req-ct" class="data-box">{encryptedB64.ciphertext}</code>
-			<label for="enc-req-enc">Enc (base64)</label>
-			<code id="enc-req-enc" class="data-box">{encryptedB64.enc}</code>
+			<h2>🔒 Encrypted Request (Client → Server) - Sealed</h2>
+			<label for="wrapped-req">Wrapped Ciphertext (obfuscated base64)</label>
+			<code id="wrapped-req" class="data-box">{wrappedCiphertext}</code>
 		</div>
 	{/if}
 
-	{#if serverEncryptedB64.ciphertext}
+	{#if serverWrappedCiphertext}
 		<div class="panel encrypted">
-			<h2>🔒 Encrypted Response (Server → Client)</h2>
-			<label for="enc-res-ct">Ciphertext (base64)</label>
-			<code id="enc-res-ct" class="data-box">{serverEncryptedB64.ciphertext}</code>
-			<label for="enc-res-enc">Enc (base64)</label>
-			<code id="enc-res-enc" class="data-box">{serverEncryptedB64.enc}</code>
+			<h2>🔒 Encrypted Response (Server → Client) - Sealed</h2>
+			<label for="wrapped-res">Wrapped Ciphertext (obfuscated base64)</label>
+			<code id="wrapped-res" class="data-box">{serverWrappedCiphertext}</code>
 		</div>
 	{/if}
 

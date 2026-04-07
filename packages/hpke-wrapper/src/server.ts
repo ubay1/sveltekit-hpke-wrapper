@@ -2,6 +2,7 @@ import { CipherSuite } from '@hpke/core';
 import { DhkemX25519HkdfSha256 } from '@hpke/dhkem-x25519';
 import { HkdfSha256, Aes128Gcm } from '@hpke/core';
 import { generateKeyPair, base64ToUint8Array, uint8ArrayToBase64 } from './hpke.js';
+import { seal, unseal } from './operation.js';
 
 /**
  * HPKE Server instance with key management
@@ -11,10 +12,10 @@ export interface HpkeServerInstance {
 	init: () => Promise<string>;
 	/** Get server public key as base64 */
 	getPublicKeyBase64: () => string;
-	/** Decrypt message from client */
-	decrypt: (ciphertext: string, enc: string, clientPublicKey: string) => Promise<string>;
-	/** Encrypt message to client */
-	encrypt: (message: string, clientPublicKey: string) => Promise<{ ciphertext: string; enc: string }>;
+	/** Decrypt message from client (wrapped with seal) */
+	decrypt: (wrappedCiphertext: string) => Promise<string>;
+	/** Encrypt message to client (wrapped with seal) */
+	encrypt: (message: string, clientPublicKey: string) => Promise<string>;
 }
 
 /**
@@ -37,22 +38,16 @@ export interface HpkeServerConfig {
  * Request context for server-side processing
  */
 export interface HpkeRequestContext {
-	/** Encrypted ciphertext from client */
-	ciphertext: string;
-	/** Encapsulated key */
-	enc: string;
-	/** Client's public key */
-	clientPublicKey: string;
+	/** Wrapped ciphertext from client (sealed) */
+	wrappedCiphertext: string;
 }
 
 /**
  * Response context for server-side encryption
  */
 export interface HpkeResponseContext {
-	/** Encrypted ciphertext */
-	ciphertext: string;
-	/** Encapsulated key */
-	enc: string;
+	/** Wrapped ciphertext (sealed) */
+	wrappedCiphertext: string;
 }
 
 interface StoredKeyPair {
@@ -219,45 +214,36 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 		},
 
 		/**
-		 * Decrypt message from client
+		 * Decrypt message from client (wrapped with seal)
 		 *
-		 * @param ciphertext - Base64 encoded ciphertext
-		 * @param enc - Base64 encoded encapsulated key
-		 * @param clientPublicKey - Base64 encoded client public key
+		 * @param wrappedCiphertext - Base64 encoded wrapped ciphertext (from seal)
 		 * @returns Decrypted plaintext message
 		 */
-		async decrypt(
-			ciphertext: string,
-			enc: string,
-			_clientPublicKey: string
-		): Promise<string> {
+		async decrypt(wrappedCiphertext: string): Promise<string> {
+			console.log('🔓 Server decrypt - START');
+			console.log('🔓 wrappedCiphertext type:', typeof wrappedCiphertext);
+			console.log('🔓 wrappedCiphertext length:', wrappedCiphertext?.length);
+			console.log('🔓 wrappedCiphertext value:', wrappedCiphertext);
+
 			if (!serverKeyPair) {
 				throw new Error('Server keys not initialized. Call init() first.');
 			}
 
+			console.log('📥 Server decrypt - received wrappedCiphertext length:', wrappedCiphertext.length);
+
 			const suite = createSuite();
-			const ciphertextBytes = base64ToUint8Array(ciphertext);
-			const encBytes = base64ToUint8Array(enc);
 
 			// Try current key
 			try {
-				const recipient = await suite.createRecipientContext({
-					recipientKey: serverKeyPair.privateKey,
-					enc: encBytes,
-				});
-				const plaintext = await recipient.open(ciphertextBytes.buffer);
-				return new TextDecoder().decode(plaintext);
+				console.log('🔓 Attempting unseal with current key...');
+				return await unseal(suite, serverKeyPair.privateKey, wrappedCiphertext);
 			} catch {
 				// Try previous key (grace period for rotated keys)
 				if (previousKeyPair) {
 					try {
-						const recipient = await suite.createRecipientContext({
-							recipientKey: previousKeyPair.privateKey,
-							enc: encBytes,
-						});
-						const plaintext = await recipient.open(ciphertextBytes.buffer);
+						const result = await unseal(suite, previousKeyPair.privateKey, wrappedCiphertext);
 						console.log('✓ Decrypted with previous key (post-rotation grace)');
-						return new TextDecoder().decode(plaintext);
+						return result;
 					} catch {
 						// fall through
 					}
@@ -267,35 +253,15 @@ export function createHpkeServer(config: HpkeServerConfig = {}): HpkeServerInsta
 		},
 
 		/**
-		 * Encrypt message to client
+		 * Encrypt message to client (wrapped with seal)
 		 *
 		 * @param message - Plaintext message to encrypt
 		 * @param clientPublicKeyBase64 - Base64 encoded client public key
-		 * @returns Encrypted message with base64 encoded ciphertext and enc
+		 * @returns Wrapped ciphertext (sealed) that looks like random base64
 		 */
-		async encrypt(
-			message: string,
-			clientPublicKeyBase64: string
-		): Promise<{ ciphertext: string; enc: string }> {
+		async encrypt(message: string, clientPublicKeyBase64: string): Promise<string> {
 			const suite = createSuite();
-
-			const clientKeyBytes = base64ToUint8Array(clientPublicKeyBase64);
-			const clientPublicKey = await suite.kem.importKey(
-				'raw',
-				clientKeyBytes.buffer as ArrayBuffer,
-				true
-			);
-
-			const sender = await suite.createSenderContext({
-				recipientPublicKey: clientPublicKey,
-			});
-
-			const encrypted = await sender.seal(new TextEncoder().encode(message));
-
-			return {
-				ciphertext: uint8ArrayToBase64(new Uint8Array(encrypted)),
-				enc: uint8ArrayToBase64(new Uint8Array(sender.enc)),
-			};
+			return await seal(suite, clientPublicKeyBase64, message);
 		},
 	};
 

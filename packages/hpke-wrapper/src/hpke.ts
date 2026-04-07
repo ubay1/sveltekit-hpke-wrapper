@@ -31,9 +31,9 @@ export interface HpkeSuiteConfig {
 
 /**
  * Create HPKE Suite with AES-128-GCM
- * 
+ *
  * @returns Configured CipherSuite instance
- * 
+ *
  * @example
  * ```typescript
  * const suite = createHpkeSuite();
@@ -50,9 +50,9 @@ export function createHpkeSuite() {
 
 /**
  * Create HPKE Suite with ChaCha20-Poly1305
- * 
+ *
  * @returns Configured CipherSuite instance
- * 
+ *
  * @example
  * ```typescript
  * const suite = createHpkeSuiteChaCha20();
@@ -68,9 +68,9 @@ export function createHpkeSuiteChaCha20() {
 
 /**
  * Generate a new HPKE key pair
- * 
+ *
  * @returns Key pair with XCryptoKey objects and raw public key bytes
- * 
+ *
  * @example
  * ```typescript
  * const { publicKey, privateKey, publicKeyRaw } = await generateKeyPair();
@@ -79,10 +79,10 @@ export function createHpkeSuiteChaCha20() {
 export async function generateKeyPair(): Promise<HpkeKeyPair> {
 	const suite = createHpkeSuite();
 	const keyPair = await suite.kem.generateKeyPair() as { publicKey: any; privateKey: any };
-	
+
 	// Export public key as raw bytes for transmission
 	const publicKeyRaw = new Uint8Array(Object.values(keyPair.publicKey.key));
-	
+
 	return {
 		publicKey: keyPair.publicKey,
 		privateKey: keyPair.privateKey,
@@ -92,10 +92,10 @@ export async function generateKeyPair(): Promise<HpkeKeyPair> {
 
 /**
  * Export HPKE public key to base64 string
- * 
+ *
  * @param publicKey - HPKE public key (XCryptoKey)
  * @returns Base64 encoded public key
- * 
+ *
  * @example
  * ```typescript
  * const base64 = exportKeyToBase64(publicKey);
@@ -108,10 +108,10 @@ export function exportKeyToBase64(publicKey: any): string {
 
 /**
  * Import HPKE public key from base64 string
- * 
+ *
  * @param base64 - Base64 encoded public key
  * @returns HPKE public key (XCryptoKey)
- * 
+ *
  * @example
  * ```typescript
  * const publicKey = await importKeyFromBase64(base64String);
@@ -125,11 +125,11 @@ export async function importKeyFromBase64(base64: string): Promise<any> {
 
 /**
  * Encrypt a message using HPKE
- * 
+ *
  * @param message - Plaintext message to encrypt
  * @param recipientPublicKey - Recipient's public key (XCryptoKey)
  * @returns Encrypted message with ciphertext and encapsulated key
- * 
+ *
  * @example
  * ```typescript
  * const { ciphertext, enc } = await hpkeEncrypt('Secret message', publicKey);
@@ -156,12 +156,12 @@ export async function hpkeEncrypt(
 
 /**
  * Decrypt a message using HPKE
- * 
+ *
  * @param ciphertext - Encrypted ciphertext (ArrayBuffer)
  * @param enc - Encapsulated key (Uint8Array or ArrayBuffer)
  * @param recipientPrivateKey - Recipient's private key (XCryptoKey)
  * @returns Decrypted plaintext message
- * 
+ *
  * @example
  * ```typescript
  * const decrypted = await hpkeDecrypt(ciphertext, enc, privateKey);
@@ -189,9 +189,9 @@ export async function hpkeDecrypt(
 
 /**
  * Complete encryption/decryption demo
- * 
+ *
  * @returns Demo result with original and decrypted messages
- * 
+ *
  * @example
  * ```typescript
  * const result = await hpkeDemo();
@@ -214,7 +214,7 @@ export async function hpkeDemo() {
 
 /**
  * Convert Uint8Array to base64 string
- * 
+ *
  * @param data - Uint8Array to convert
  * @returns Base64 encoded string
  */
@@ -228,7 +228,7 @@ export function uint8ArrayToBase64(data: Uint8Array): string {
 
 /**
  * Convert base64 string to Uint8Array
- * 
+ *
  * @param base64 - Base64 encoded string
  * @returns Uint8Array
  */
