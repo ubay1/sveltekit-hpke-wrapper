@@ -29,12 +29,14 @@ const isBase64String = (str: string) => {
 
 // Use native crypto (available in both browser and Node.js 19+)
 const getRandomValues = (array: Uint32Array): Uint32Array => {
-  if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
-    return globalThis.crypto.getRandomValues(array)
-  }
-  // Fallback for Node.js < 19
-  const { webcrypto } = globalThis.require('crypto')
-  return webcrypto.getRandomValues(array)
+  const crypto = typeof globalThis.crypto !== 'undefined' && globalThis.crypto
+    ? globalThis.crypto
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    : ((globalThis as any).require('crypto') as { webcrypto: Crypto }).webcrypto
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  crypto.getRandomValues(array as any)
+  return array
 }
 
 // Advices from https://github.com/gkouziik/eslint-plugin-security-node/blob/master/docs/rules/detect-insecure-randomness.md
@@ -118,7 +120,7 @@ export const seal = async (suite: CipherSuite, publicKeyB64: string, plainText: 
   return wrappedResult
 }
 
-export const unseal = async (suite: CipherSuite, privateKey: any, cipher: string) => {
+export const unseal = async (suite: CipherSuite, privateKey: CryptoKey, cipher: string) => {
   const unwrappedCipher = unwrapBase64(cipher)
 
   if (isBase64String(unwrappedCipher)) {
