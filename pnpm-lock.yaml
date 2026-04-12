@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ubay182/mini-super-fetch':
+        specifier: ^0.0.2
+        version: 0.0.2
       '@ubay182/sveltekit-hpke-wrapper':
         specifier: ^1.0.9
         version: 1.0.9(svelte@5.55.1)
@@ -605,6 +608,9 @@ packages:
   '@typescript-eslint/visitor-keys@8.58.0':
     resolution: {integrity: sha512-XJ9UD9+bbDo4a4epraTwG3TsNPeiB9aShrUneAVXy8q4LuwowN+qu89/6ByLMINqvIMeI9H9hOHQtg/ijrYXzQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@ubay182/mini-super-fetch@0.0.2':
+    resolution: {integrity: sha512-VsmM/j4Es3cNKtciW6Kyqvh9jyZFPSlCbipc9dvpg/6UCJsjparIiFZh1vKSAruAK8wY4Sr4J+G6SrLZiahegA==}
 
   '@ubay182/sveltekit-hpke-wrapper@1.0.9':
     resolution: {integrity: sha512-MK4gtYfFM/J1szve17qduq3ZfgoGXT1hR4891o22+i3a8ERkl8H3BAFvz+WeSwpmXIuWD1sYobvmmbFJr4896Q==}
@@ -1596,6 +1602,8 @@ snapshots:
     dependencies:
       '@typescript-eslint/types': 8.58.0
       eslint-visitor-keys: 5.0.1
+
+  '@ubay182/mini-super-fetch@0.0.2': {}
 
   '@ubay182/sveltekit-hpke-wrapper@1.0.9(svelte@5.55.1)':
     dependencies:
