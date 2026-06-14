@@ -47,10 +47,3 @@ export {
 	seal,
 	unseal,
 } from './operation.js';
-
-// SvelteKit helpers
-export {
-	createHpkeEndpoint,
-	type HpkeEndpointHandlers,
-	type HpkeEndpointConfig,
-} from './sveltekit.js';
