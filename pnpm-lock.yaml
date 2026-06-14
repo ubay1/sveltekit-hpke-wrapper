@@ -12,8 +12,8 @@ importers:
         specifier: ^0.0.2
         version: 0.0.2
       '@ubay182/sveltekit-hpke-wrapper':
-        specifier: ^1.0.9
-        version: 1.0.9(svelte@5.55.1)
+        specifier: ^1.0.11
+        version: 1.0.11(svelte@5.55.1)
     devDependencies:
       '@eslint/compat':
         specifier: ^2.0.3
@@ -612,8 +612,8 @@ packages:
   '@ubay182/mini-super-fetch@0.0.2':
     resolution: {integrity: sha512-VsmM/j4Es3cNKtciW6Kyqvh9jyZFPSlCbipc9dvpg/6UCJsjparIiFZh1vKSAruAK8wY4Sr4J+G6SrLZiahegA==}
 
-  '@ubay182/sveltekit-hpke-wrapper@1.0.9':
-    resolution: {integrity: sha512-MK4gtYfFM/J1szve17qduq3ZfgoGXT1hR4891o22+i3a8ERkl8H3BAFvz+WeSwpmXIuWD1sYobvmmbFJr4896Q==}
+  '@ubay182/sveltekit-hpke-wrapper@1.0.11':
+    resolution: {integrity: sha512-cs1WFKI5juJR7N2IEt9lGuDRbdB9aaXj6KdHGQyIRPkNrYzMMWXe2bDbrXMDVoJSVxfqdcd4mwqbU2UAMuF4tg==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0
@@ -1605,7 +1605,7 @@ snapshots:
 
   '@ubay182/mini-super-fetch@0.0.2': {}
 
-  '@ubay182/sveltekit-hpke-wrapper@1.0.9(svelte@5.55.1)':
+  '@ubay182/sveltekit-hpke-wrapper@1.0.11(svelte@5.55.1)':
     dependencies:
       '@hpke/chacha20poly1305': 1.8.0
       '@hpke/core': 1.9.0

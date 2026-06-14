@@ -58,6 +58,6 @@
 	],
 	"dependencies": {
 		"@ubay182/mini-super-fetch": "^0.0.2",
-		"@ubay182/sveltekit-hpke-wrapper": "^1.0.9"
+		"@ubay182/sveltekit-hpke-wrapper": "^1.0.11"
 	}
 }
